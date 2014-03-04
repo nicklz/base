@@ -24,5 +24,5 @@ def setup():
         local('echo "create database project;" | mysql -uroot')
         local('sudo cp /home/vagrant/id_rsa /home/vagrant/.ssh/id_rsa')
         local('sudo cp /home/vagrant/id_rsa.pub /home/vagrant/.ssh/id_rsa.pub')
-				local('sudo apache2ctl restart')
+	local('sudo apache2ctl restart')
 
