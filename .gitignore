@@ -1,0 +1,14 @@
+.vagrant
+.idea
+.DS_Store
+.project
+sites/default/files
+sites/default/settings.php
+
+
+*.sublime-project
+*.sublime-workspace
+*.pyc
+
+*id_rsa
+*id_rsa.pub
