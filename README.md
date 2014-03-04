@@ -17,3 +17,4 @@ cd www
 fab local.setup                    (type yes a couple times)
 Set your host file => 127.0.0.1    local.<website name>.com and then navigate to local.<website name>.com:8080
 
+
