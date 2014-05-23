@@ -1,16 +1,19 @@
 <?php
 
-/*
- * @file
- *   Tests for Shell aliases.
+namespace Unish;
+
+/**
+ * Tests for Shell aliases.
+ *
+ * @group base
  */
-class shellAliasesCase extends Drush_CommandTestCase {
+class shellAliasesCase extends CommandUnishTestCase {
 
   /**
    * Write a config file that contains the shell-aliases array.
    */
-  static function setUpBeforeClass() {
-    parent::setUpBeforeClass();
+  function setUp() {
+    parent::setUp();
     $contents = "
       <?php
 
@@ -32,23 +35,20 @@ class shellAliasesCase extends Drush_CommandTestCase {
       );
     ";
     file_put_contents(UNISH_SANDBOX . '/b/drushrc.php', trim($contents));
-    $contents = "
-      <?php
-
-      \$aliases['myalias'] = array (
-        'root' => '/path/to/drupal',
-        'uri' => 'mysite.org',
-        '#peer' => '@live',
-        'path-aliases' => array (
-          '%mypath' => '/srv/data/mypath',
-          '%sandbox' => '" . UNISH_SANDBOX . "'
-        ),
-      );
-    ";
-    file_put_contents(UNISH_SANDBOX . '/aliases.drushrc.php', trim($contents));
+    $aliases['myalias'] = array(
+      'root' => '/path/to/drupal',
+      'uri' => 'mysite.org',
+      '#peer' => '@live',
+      'path-aliases' => array (
+        '%mypath' => '/srv/data/mypath',
+        '%sandbox' => UNISH_SANDBOX,
+      ),
+    );
+    $contents = $this->unish_file_aliases($aliases);
+    file_put_contents(UNISH_SANDBOX . '/aliases.drushrc.php', $contents);
   }
 
-  /*
+  /**
    * Test shell aliases to Drush commands.
    */
   public function testShellAliasDrushLocal() {
@@ -60,7 +60,7 @@ class shellAliasesCase extends Drush_CommandTestCase {
     $this->assertContains('These options are applicable to most drush commands.', $output, 'Successfully executed local shell alias to drush command');
   }
 
-  /*
+  /**
    * Test shell aliases to Bash commands. Assure we pass along extra arguments
    * and options.
    */
@@ -84,9 +84,15 @@ class shellAliasesCase extends Drush_CommandTestCase {
     $this->drush('glopts', array(), $options, 'user@server/path/to/drupal#sitename');
     // $expected might be different on non unix platforms. We shall see.
     // n.b. --config is not included in calls to remote systems.
-    $bash = $this->escapeshellarg('drush  --invoke --simulate --nocolor --uri=sitename --root=/path/to/drupal  topic core-global-options 2>&1');
-    $expected = "Simulating backend invoke: ssh user@server $bash 2>&1";
+    $bash = $this->escapeshellarg('drush  --nocolor --uri=sitename --root=/path/to/drupal  core-topic core-global-options 2>&1');
+    $expected = "Simulating backend invoke: ssh -t user@server $bash 2>&1";
     $output = $this->getOutput();
+    // Remove any coverage arguments. The filename changes, so it's not possible
+    // to create a string for assertEquals, and the need for both shell escaping
+    // and regexp escaping different parts of the expected output for
+    // assertRegexp makes it easier just to remove the argument before checking
+    // the output.
+    $output = preg_replace('{--drush-coverage=[a-zA-Z0-9/_]+ }', '', $output);
     $this->assertEquals($expected, $output, 'Expected remote shell alias to a drush command was built');
   }
 
@@ -104,7 +110,7 @@ class shellAliasesCase extends Drush_CommandTestCase {
     $this->assertEquals($expected, $output, 'Expected remote shell alias to a bash command was built');
   }
 
-  /*
+  /**
    * Test shell aliases with simple replacements -- no alias.
    */
   public function testShellAliasSimpleReplacement() {
@@ -118,7 +124,7 @@ class shellAliasesCase extends Drush_CommandTestCase {
     $this->assertEquals($expected, $output);
   }
 
-  /*
+  /**
    * Test shell aliases with complex replacements -- no alias.
    */
   public function testShellAliasReplacementNoAlias() {
@@ -129,7 +135,7 @@ class shellAliasesCase extends Drush_CommandTestCase {
     $this->drush('echotest', array(), $options, NULL, NULL, self::EXIT_ERROR);
   }
 
-  /*
+  /**
    * Test shell aliases with replacements -- alias.
    */
   public function testShellAliasReplacementWithAlias() {
@@ -145,7 +151,7 @@ class shellAliasesCase extends Drush_CommandTestCase {
     $this->assertEquals($expected, $output);
   }
 
-  /*
+  /**
    * Test shell aliases with replacements and compound commands.
    */
   public function testShellAliasCompoundCommands() {
@@ -160,7 +166,7 @@ class shellAliasesCase extends Drush_CommandTestCase {
   }
 
 
-  /*
+  /**
    * Test shell aliases with multiple config files.
    */
   public function testShellAliasMultipleConfigFiles() {

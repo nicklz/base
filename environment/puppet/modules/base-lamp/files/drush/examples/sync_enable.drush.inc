@@ -1,6 +1,9 @@
 <?php
 
 /**
+ * @file
+ * Example "Sync enable" sql-sync command alter.
+ *
  * Sync_enable adds options to sql-sync to enable and disable
  * modules after an sql-sync operation.  One use case for this
  * is to use Drush site aliases to automatically enable your
@@ -10,6 +13,7 @@
  *
  * For example:
  *
+ * @code
  * $aliases['dev'] = array (
  *   'root' => '/srv/www/drupal',
  *   'uri' => 'site.com',
@@ -29,6 +33,7 @@
  *     ),
  *   ),
  * );
+ * @endcode
  *
  * To use this feature, copy the 'target-command-specific'
  * item from the example alias above, place it in your development
@@ -37,10 +42,25 @@
  * file to a location where Drush will find it, such as
  * $HOME/.drush.  See `drush topic docs-commands` for more
  * information.
+ *
+ * To set variables on a development site:
+ *
+ * Instead of calling variable_set and variable_delete in a post-sync
+ * hook, consider adding $conf variables to settings.php.
+ *
+ * For example:
+ *
+ * $conf['error_level'] = 2;
+ * error_reporting(E_ALL);
+ * ini_set('display_errors', TRUE);
+ * ini_set('display_startup_errors', TRUE);
+ * $conf['preprocess_css'] = 0;
+ * $conf['cache'] = 0;
+ * $conf['googleanalytics_account'] = '';
  */
 
 /**
- * Implement hook help alter.
+ * Implements hook_drush_help_alter().
  *
  * When a hook extends a command with additional options, it must
  * implement help alter and declare the option(s).  Doing so will add
@@ -58,11 +78,12 @@ function sync_enable_drush_help_alter(&$command) {
 }
 
 /**
- * Implement hook post sql sync.
+ * Implements drush_hook_post_COMMAND().
  *
  * The post hook is only called if the sql-sync operation completes
  * without an error.  When called, we check to see if the user specified
- * any modules to enable/disable.  If so, we will call pm-enable/pm-disable on each module.
+ * any modules to enable/disable.  If so, we will call pm-enable/pm-disable on
+ * each module.
  */
 function drush_sync_enable_post_sql_sync($source = NULL, $destination = NULL) {
   $modules_to_enable = drush_get_option_list('enable');
@@ -77,25 +98,18 @@ function drush_sync_enable_post_sql_sync($source = NULL, $destination = NULL) {
   }
   $permissions_table = drush_get_option('permission');
   if (!empty($permissions_table)) {
-    foreach ($permissions_table as $role => $actions) {
-      $values = drush_invoke_process($destination, 'sql-query', array("select perm from permission, role where role.name='$role' and role.rid = permission.rid;"), array(), array('integrate' => FALSE));
-      // Remove the first line and explode
-      $sql_output = preg_replace('/^.+\n/', '', trim($values['output']));
-      $permissions = explode(', ', $sql_output);
-      $original_permissions = $permissions;
+    foreach ($permissions_table as $role_name => $actions) {
       if (array_key_exists('add', $actions)) {
         $permissions_to_add = is_array($actions['add']) ? $actions['add'] : explode(', ', $actions['add']);
-        drush_log(dt("Add !permissions to !role post-sql-sync", array('!permissions' => implode(', ', $permissions_to_add), '!role' => $role)), 'ok');
-        $permissions = array_unique(array_merge($permissions, $permissions_to_add));
+        foreach ($permissions_to_add as $permission) {
+          $values = drush_invoke_process($destination, 'role-add-perm', array($role_name, $permission), array(), array('integrate' => TRUE));
+        }
       }
       if (array_key_exists('remove', $actions)) {
         $permissions_to_remove = is_array($actions['remove']) ? $actions['remove'] : explode(', ', $actions['remove']);
-        drush_log(dt("Remove !permissions from !role post-sql-sync", array('!permissions' => implode(', ', $permissions_to_remove), '!role' => $role)), 'ok');
-        $permissions = array_diff($permissions, $permissions_to_remove);
-      }
-      if ($permissions != $original_permissions) {
-        $permissions_string = implode(', ', $permissions);
-        $values = drush_invoke_process($destination, 'sql-query', array("update permission, role set perm='$permissions_string' where role.name='$role' and role.rid = permission.rid;"), array(), array('integrate' => FALSE));
+        foreach ($permissions_to_remove as $permission) {
+          $values = drush_invoke_process($destination, 'role-remove-perm', array($role_name, $permission), array(), array('integrate' => TRUE));
+        }
       }
     }
   }

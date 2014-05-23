@@ -167,6 +167,8 @@ Do not use both types of declarations for a single project in your makefile.
   Retrieve a project as a direct download. Options:
 
   `url` - the URL of the file. Required.
+          The URL can also be a path to a local file either using the bare path or
+          the file:// protocol. The path may be absolute or relative to the makefile.
 
   `md5`, `sha1`, `sha256`, or `sha512` - one or more checksums for the file. Optional.
 
@@ -187,6 +189,8 @@ Do not use both types of declarations for a single project in your makefile.
 
   `url` - the URL of the repository. Required.
 
+  `working-copy` - If true, the checked out source will be kept as a working copy rather than exported as standalone files
+
 - `download[type] = git`
 
   Use a git repository as the source for this project. Options:
@@ -195,25 +199,20 @@ Do not use both types of declarations for a single project in your makefile.
 
   `branch` - the branch to be checked out. Optional.
 
-  `revision` - a specific revision identified by commit to check out. Optional.
+  `revision` - a specific revision identified by commit to check
+    out. Optional. Note that it is recommended on use `branch` in
+    combination with `revision` if relying on the .info file rewriting.
 
   `tag` - the tag to be checked out. Optional.
 
      projects[mytheme][download][type] = "git"
      projects[mytheme][download][url] = "git://github.com/jane_doe/mytheme.git"
 
-  Shorthand is available to pull a specific revision from a git
-  repository:
-
-  projects[context_admin][revision] = "eb9f05e"
-
-  is the same as:
-
-  projects[context_admin][download][revision] = "eb9f05e"
-
   `refspec` - the git reference to fetch and checkout. Optional.
 
      If this is set, it will have priority over tag, revision and branch options.
+
+  `working-copy` - If true, the checked out source will be kept as a working copy rather than exported as standalone files
 
 - `download[type] = svn`
 
@@ -234,6 +233,7 @@ Do not use both types of declarations for a single project in your makefile.
      projects[mytheme][download][type] = "svn"
      projects[mytheme][download][url] = "http://example.com/svnrepo/cool-theme/"
 
+  `working-copy` - If true, the checked out source will be kept as a working copy rather than exported as standalone files
 
 ### Libraries
 
@@ -349,13 +349,22 @@ build multiple install profiles on the same site, fetch library dependencies
 for a given module, or bundle a set of module and its dependencies together.
 For Drush Make to recognize a makefile embedded within a project, the makefile
 itself must have the same name as the project. For instance, the makefile
-embedded within the managingnews profile must be called "managingnews.make".
+embedded within the managingnews profile must be called "managingnews.make". If
+no makefile matching the project's name is found, Drush Make will look for a
+"drupal-org.make" makefile instead. The file must be in the project's root
+directory. Subdirectories will be ignored.
 
 **Build a full Drupal site with the Managing News install profile:**
 
     core = 6.x
     projects[] = drupal
     projects[] = managingnews
+
+** Use a distribution as core **
+
+    core = 7.x
+    projects[commerce_kickstart][type] = "core"
+    projects[commerce_kickstart][version] = "7.x-1.19"
 
 Testing
 -------
@@ -379,7 +388,7 @@ itself. Writing a new test is extremely simple. The process is as follows:
       ),
       'options'  => array('any' => TRUE, 'other' => TRUE, 'options' => TRUE),
     ),
-5. Test! Run drush test suite (see DRUSH/tests/README.txt). To just
+5. Test! Run drush test suite (see DRUSH/tests/README.md). To just
    run the make tests:
 
      `phpunit --filter=makeMake .`

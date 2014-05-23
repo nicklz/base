@@ -1,6 +1,8 @@
 <?php
 
-class commandUnitCase extends Drush_UnitTestCase {
+namespace Unish;
+
+class commandUnitCase extends UnitUnishTestCase {
   /**
    * Assure that matching version-specific command files are loaded and others are ignored.
    */
@@ -36,7 +38,7 @@ EOD;
     $this->assertFalse(in_array($files[3], $loaded), 'Did not load a a mismatched version-specific command directory.');
   }
 
-  /*
+  /**
    * Assert that $command has interesting properties. Reference command by
    * it's alias (dl) to assure that those aliases are built as expected.
    */

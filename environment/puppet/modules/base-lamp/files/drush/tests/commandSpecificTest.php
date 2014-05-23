@@ -1,14 +1,16 @@
 <?php
 
-/*
-* @file
+namespace Unish;
+
+/**
 *  Assure that context API behaves as designed. Mostly implicitly tested, but we
 *  do have some edges that need explicit testing.
 *
 *  @see drush/includes/context.inc.
+*
+*  @group base
 */
-
-class commandSpecificCase extends Drush_CommandTestCase {
+class commandSpecificCase extends CommandUnishTestCase {
 
   /**
    * Try to write a tiny drushrc.php to each place that drush checks. Also
@@ -35,7 +37,7 @@ class commandSpecificCase extends Drush_CommandTestCase {
         '%files' => 'sites/default/files',
       ),
     );
-    $contents = $this->file_aliases($aliases);
+    $contents = $this->unish_file_aliases($aliases);
     $return = file_put_contents($path, $contents);
   }
 

@@ -1,11 +1,13 @@
 <?php
 
+namespace Unish;
+
 /**
  * Make makefile tests.
  * @group make
  * @group slow
  */
-class makeMakefileCase extends Drush_CommandTestCase {
+class makeMakefileCase extends CommandUnishTestCase {
   /**
    * Path to test make files.
    */
@@ -58,6 +60,56 @@ class makeMakefileCase extends Drush_CommandTestCase {
     $this->runMakefileTest('no-patch-txt');
   }
 
+  /**
+   * Test no-core and working-copy in options array.
+   */
+  function testMakeOptionsArray() {
+    // Use the goptions-array.make file.
+    $config = $this->getMakefile('options-array');
+
+    $makefile_path = dirname(__FILE__) . '/makefiles';
+    $makefile = $makefile_path . '/' . $config['makefile'];
+    $install_directory = UNISH_SANDBOX . '/options-array';
+    $this->drush('make', array($makefile, $install_directory));
+
+    // Test cck_signup .git/HEAD file.
+    $this->assertFileExists($install_directory . '/sites/all/modules/cck_signup/.git/HEAD');
+    $contents = file_get_contents($install_directory . '/sites/all/modules/cck_signup/.git/HEAD');
+    $this->assertContains('2fe932c', $contents);
+
+    // Test context_admin .git/HEAD file.
+    $this->assertFileExists($install_directory . '/sites/all/modules/context_admin/.git/HEAD');
+    $contents = file_get_contents($install_directory . '/sites/all/modules/context_admin/.git/HEAD');
+    $this->assertContains('eb9f05e', $contents);
+  }
+
+  /**
+   * Test per project working-copy option.
+   */
+  function testMakeOptionsProject() {
+    // Use the options-project.make file.
+    $config = $this->getMakefile('options-project');
+
+    $makefile_path = dirname(__FILE__) . '/makefiles';
+    $options = array('no-core' => NULL);
+    $makefile = $makefile_path . '/' . $config['makefile'];
+    $install_directory = UNISH_SANDBOX . '/options-project';
+    $this->drush('make', array($makefile, $install_directory), $options);
+
+    // Test context_admin .git/HEAD file.
+    $this->assertFileExists($install_directory . '/sites/all/modules/context_admin/.git/HEAD');
+    $contents = file_get_contents($install_directory . '/sites/all/modules/context_admin/.git/HEAD');
+    $this->assertContains('eb9f05e', $contents);
+
+    // Test cck_signup .git/HEAD file does not exist.
+    $this->assertFileNotExists($install_directory . '/sites/all/modules/cck_signup/.git/HEAD');
+
+    // Test caption_filter .git/HEAD file.
+    $this->assertFileExists($install_directory . '/sites/all/modules/contrib/caption_filter/.git/HEAD');
+    $contents = file_get_contents($install_directory . '/sites/all/modules/contrib//caption_filter/.git/HEAD');
+    $this->assertContains('c9794cf', $contents);
+  }
+
   function testMakePatch() {
     $this->runMakefileTest('patch');
   }
@@ -68,6 +120,19 @@ class makeMakefileCase extends Drush_CommandTestCase {
 
   function testMakeRecursion() {
     $this->runMakefileTest('recursion');
+  }
+
+  function testMakeRecursionOverride() {
+    $this->runMakefileTest('recursion-override');
+  }
+
+  function testMakeNoRecursion() {
+    $config = $this->getMakefile('recursion');
+    $makefile = $this->makefile_path . DIRECTORY_SEPARATOR . $config['makefile'];
+
+    $install_directory = UNISH_SANDBOX . DIRECTORY_SEPARATOR . 'norecursion';
+    $this->drush('make', array('--no-core', '--no-recursion', $makefile, $install_directory));
+    $this->assertNotContains("ctools", $this->getOutput(), "Make with --no-recursion does not recurse into drupal_forum to download ctools.");
   }
 
   function testMakeSvn() {
@@ -310,6 +375,13 @@ class makeMakefileCase extends Drush_CommandTestCase {
 
     // Verify git reference cache exists.
     $this->assertFileExists($cache_dir . '/git/context_admin-' . md5('http://git.drupal.org/project/context_admin.git'));
+
+    // Text caption_filter .info rewrite.
+    $this->assertFileExists(UNISH_SANDBOX . '/test-build/sites/all/modules/contrib/caption_filter/caption_filter.info');
+    $contents = file_get_contents(UNISH_SANDBOX . '/test-build/sites/all/modules/contrib/caption_filter/caption_filter.info');
+    $this->assertContains('; Information added by drush on ' . date('Y-m-d'), $contents);
+    $this->assertContains('version = "7.x-1.2+0-dev"', $contents);
+    $this->assertContains('project = "caption_filter"', $contents);
   }
 
   function testMakeFileExtract() {
@@ -342,6 +414,13 @@ class makeMakefileCase extends Drush_CommandTestCase {
     $this->assertFileExists(UNISH_SANDBOX . '/sites/all/modules/contrib/cck_signup/README.txt');
   }
 
+  /**
+   * Test that a distribution can be used as a "core" project.
+   */
+  function testMakeUseDistributionAsCore() {
+    $this->runMakefileTest('use-distribution-as-core');
+  }
+
   function getMakefile($key) {
     static $tests = array(
       'get' => array(
@@ -362,21 +441,21 @@ class makeMakefileCase extends Drush_CommandTestCase {
         'name' => 'Simple git integration',
         'makefile' => 'git-simple.make',
         'build' => TRUE,
-        'md5' => '6754a6814d4213326513ea750e6d5b65',
+        'md5' => '0147681209adef163a8ac2c0cff2a07e',
         'options'  => array('no-core' => NULL, 'no-gitinfofile' => NULL),
       ),
       'no-patch-txt' => array(
         'name'     => 'Test --no-patch-txt option',
         'makefile' => 'patches.make',
         'build'    => TRUE,
-        'md5' => 'e43b25505a5edfcdf25b4eaa064978b2',
+        'md5' => '59267a04f98374ed5b0b75e90cefcd9c',
         'options'  => array('no-core' => NULL, 'no-patch-txt' => NULL),
       ),
       'patch' => array(
         'name'     => 'Test patching and writing of PATCHES.txt file',
         'makefile' => 'patches.make',
         'build'    => TRUE,
-        'md5' => '56f1613fc8b6a9f03ab62cfa0300df4c',
+        'md5' => 'edf94818907bff754b24ac5c34506028',
         'options'  => array('no-core' => NULL),
       ),
       'include' => array(
@@ -394,6 +473,15 @@ class makeMakefileCase extends Drush_CommandTestCase {
         'options'  => array(
           'no-core' => NULL,
           'contrib-destination' => 'profiles/drupal_forum',
+        ),
+      ),
+      'recursion-override' => array(
+        'name' => 'Recursion overrides',
+        'makefile' => 'recursion-override.make',
+        'build' => TRUE,
+        'md5' => 'a13c3d5d416be9fa78569514844b96a2',
+        'options' => array(
+          'no-core' => NULL,
         ),
       ),
       'svn' => array(
@@ -430,14 +518,14 @@ class makeMakefileCase extends Drush_CommandTestCase {
         'name'     => 'Contrib-destination attribute',
         'makefile' => 'contrib-destination.make',
         'build'    => TRUE,
-        'md5' => 'd615d004adfa8ebfe44e91119b88389c',
+        'md5' => '2aed36201ede1849ce43d9b7d6f7e9e1',
         'options'  => array('no-core' => NULL, 'contrib-destination' => '.'),
       ),
       'file' => array(
         'name'     => 'File extraction',
         'makefile' => 'file.make',
         'build'    => TRUE,
-        'md5' => 'c7cab3930f644961a576d78769498172',
+        'md5' => '4e9883d6f9f6572af287635689c2545d',
         'options'  => array('no-core' => NULL),
       ),
       'defaults' => array(
@@ -458,7 +546,7 @@ class makeMakefileCase extends Drush_CommandTestCase {
         'name'     => 'bzip2 single file',
         'makefile' => 'bz2-singlefile.make',
         'build'    => TRUE,
-        'md5'      => '6a6f5cda115329b13d55ad0978083a94',
+        'md5'      => '4f9d57f6caaf6ece0526d867327621cc',
         'options'  => array('no-core' => NULL),
       ),
       'gzip' => array(
@@ -501,7 +589,7 @@ class makeMakefileCase extends Drush_CommandTestCase {
         'name'     => 'Extract archives',
         'makefile' => 'file-extract.make',
         'build'    => TRUE,
-        'md5' => 'f92471fb7979e45d2554c61314ac6236',
+        'md5' => 'b43d271ab3510eb33c1e300c78893458',
         // @todo This test often fails with concurrency set to more than one.
         'options'  => array('no-core' => NULL, 'concurrency' => 1),
       ),
@@ -532,6 +620,25 @@ class makeMakefileCase extends Drush_CommandTestCase {
         'build'    => TRUE,
         'md5' => '7c10e6fc65728a77a2b0aed4ec2a29cd',
         'options'  => array('no-core' => NULL, 'libraries' => 'drush_make,token'),
+      ),
+      'use-distribution-as-core' => array(
+        'name'     => 'Use distribution as core',
+        'makefile' => 'use-distribution-as-core.make',
+        'build'    => TRUE,
+        'md5' => '643a603025a20d498eb583a1e7970bad',
+        'options'  => array(),
+      ),
+      'options-array' => array(
+        'name'     => 'Test global options array',
+        'makefile' => 'options-array.make',
+        'build'    => TRUE,
+        'options'  => array(),
+      ),
+      'options-project' => array(
+        'name'     => 'Test per-project options array',
+        'makefile' => 'options-project.make',
+        'build'    => TRUE,
+        'options'  => array(),
       ),
     );
     return $tests[$key];

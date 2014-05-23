@@ -46,6 +46,7 @@ function drush_print_help($command) {
 
   // Give commandfiles an opportunity to add examples and options to the command.
   drush_bootstrap_max(DRUSH_BOOTSTRAP_DRUPAL_SITE);
+  drush_engine_add_help_topics($command);
   drush_command_invoke_all_ref('drush_help_alter', $command);
 
   drush_print(wordwrap(implode("\n", $help), drush_get_context('DRUSH_COLUMNS', 80)));
@@ -57,11 +58,13 @@ function drush_print_help($command) {
   // Print command sections help.
   foreach ($command['sections'] as $key => $value) {
     if (!empty($command[$key])) {
-      drush_print(dt($value) . ':');
       $rows = drush_format_help_section($command, $key);
-      drush_print_table($rows, FALSE, array(40));
-      unset($rows);
-      drush_print();
+      if ($rows) {
+        drush_print(dt($value) . ':');
+        drush_print_table($rows, FALSE, array('label' => 40));
+        unset($rows);
+        drush_print();
+      }
     }
   }
 
@@ -123,9 +126,11 @@ function _drush_help_merge_subcommand_information(&$command) {
  * @param $section
  *   The name of the section to format ('options', 'topic', etc.)
  * @returns array
- *   Formatted rows, suitable for printing via drush_print_table.
+ *   Formatted rows, suitable for printing via drush_print_table. The returned
+ *   array can be empty.
  */
 function drush_format_help_section($command, $section) {
+  $rows = array();
   $formatter = (function_exists('drush_help_section_formatter_' . $section)) ? 'drush_help_section_formatter_' . $section : 'drush_help_section_default_formatter';
   foreach ($command[$section] as $name => $help_attributes) {
     if (!is_array($help_attributes)) {
@@ -133,8 +138,8 @@ function drush_format_help_section($command, $section) {
     }
     $help_attributes['label'] = $name;
     call_user_func_array($formatter, array($command, &$help_attributes));
-    if (!array_key_exists('hidden', $help_attributes)) {
-      $rows[] = array($help_attributes['label'], $help_attributes['description']);
+    if (empty($help_attributes['hidden'])) {
+      $rows[] = array('label' => $help_attributes['label'], 'description' => $help_attributes['description']);
       // Process the subsections too, if any
       if (!empty($command['sub-' . $section]) && array_key_exists($name, $command['sub-' . $section])) {
         $rows = array_merge($rows, _drush_format_help_subsection($command, $section, $name, $formatter));
@@ -172,7 +177,7 @@ function _drush_format_help_subsection($command, $section, $subsection, $formatt
     $help_attributes['label'] = $name;
     call_user_func_array($formatter, array($command, &$help_attributes));
     if (!array_key_exists('hidden', $help_attributes)) {
-      $rows[] = array($prefix . $help_attributes['label'], $help_attributes['description']);
+      $rows[] = array('label' => $prefix . $help_attributes['label'], 'description' => $help_attributes['description']);
       // Process the subsections too, if any
       if (!empty($command['sub-' . $section]) && array_key_exists($name, $command['sub-' . $section])) {
         $rows = array_merge($rows, _drush_format_help_subsection($command, $section, $name, $formatter, $prefix . '  '));
@@ -194,7 +199,7 @@ function drush_help_section_formatter_options($command, &$help_attributes) {
   else {
     $help_attributes['label'] = '--' . $help_attributes['label'];
   }
-  if (array_key_exists('required', $help_attributes)) {
+  if (!empty($help_attributes['required'])) {
     $help_attributes['description'] .= " " . dt("Required.");
   }
 
@@ -244,6 +249,7 @@ function drush_global_options_command($brief = FALSE) {
   );
   $global_options_help += drush_command_defaults('global-options', 'global_options', __FILE__);
   drush_command_invoke_all_ref('drush_help_alter', $global_options_help);
+  ksort($global_options_help['options']);
 
   return $global_options_help;
 }
@@ -254,85 +260,22 @@ function drush_global_options_command($brief = FALSE) {
  */
 function drush_core_help() {
   $commands = func_get_args();
+  $format = drush_get_option('format');
+  // Backwards compatibility for --html option.
+  if (drush_get_option('html')) {
+    $format = 'html';
+  }
 
   if (empty($commands)) {
     // For speed, only bootstrap up to DRUSH_BOOTSTRAP_DRUPAL_CONFIGURATION.
     drush_bootstrap_max(DRUSH_BOOTSTRAP_DRUPAL_CONFIGURATION);
     $implemented = drush_get_commands();
-
-    // Organize all commands into categories
-    $command_categories = array();
-    $category_map = array();
-    foreach ($implemented as $key => $candidate) {
-      if ((!array_key_exists('is_alias', $candidate) || !$candidate['is_alias']) && !$candidate['hidden']) {
-        $category = $candidate['commandfile'];
-        // If we have decided to remap a category, remap every command
-        if (array_key_exists($category, $category_map)) {
-          $category = $category_map[$category];
-        }
-        if (!array_key_exists($category, $command_categories)) {
-          $title = drush_command_invoke_all('drush_help', "meta:$category:title");
-          $alternate_title = '';
-          if (!$title) {
-            // If there is no title, then check to see if the
-            // command file is stored in a folder with the same
-            // name as some other command file (e.g. 'core') that
-            // defines a title.
-            $alternate = basename($candidate['path']);
-            $alternate_title = drush_command_invoke_all('drush_help', "meta:$alternate:title");
-          }
-          if (!empty($alternate_title)) {
-            $category_map[$category] = $alternate;
-            $category = $alternate;
-            $title = $alternate_title;
-          }
-          $command_categories[$category]['title'] = empty($title) ? '' : $title[0];
-          $summary = drush_command_invoke_all('drush_help', "meta:$category:summary");
-          if ($summary) {
-            $command_categories[$category]['summary'] = $summary[0];
-          }
-        }
-        $command_categories[$category]['commands'][] = $key;
-      }
-    }
-
-    // Sort the command categories; make sure that 'core' is
-    // always first in the list
-    $core_category = array('core' => $command_categories['core']);
-    unset($command_categories['core']);
-    // Post-process the categories that have no title.
-    // Any that have fewer than 4 commands will go into a
-    // section called "other".
-    $processed_categories = array();
-    $misc_categories = array();
-    $other_commands = array();
-    $other_categories = array();
-    foreach ($command_categories as $key => $info) {
-      if (empty($info['title'])) {
-        $one_category = $key;
-        if (count($info['commands']) < 4) {
-          $other_commands = array_merge($other_commands, $info['commands']);
-          $other_categories[] = $one_category;
-        }
-        else {
-          $info['title'] = dt("All commands in !category", array('!category' => $key));
-          $misc_categories[$one_category] = $info;
-        }
-      }
-      else {
-        $processed_categories[$key] = $info;
-      }
-    }
-    $other_category = array();
-    if (!empty($other_categories)) {
-      $other_category[implode(',', $other_categories)] = array('title' => dt("Other commands"), 'commands' => $other_commands);
-    }
-    asort($processed_categories);
-    asort($misc_categories);
-    $command_categories = array_merge($core_category, $processed_categories, $misc_categories, $other_category);
+    ksort($implemented);
+    $command_categories = drush_help_categorize($implemented);
+    $visible = drush_help_visible($command_categories);
 
     // If the user specified --filter w/out a value, then
-    // present a list of help options.
+    // present a choice list of help categories.
     if (drush_get_option('filter', FALSE) === TRUE) {
       $help_categories = array();
       foreach ($command_categories as $key => $info) {
@@ -348,78 +291,48 @@ function drush_core_help() {
       }
       drush_set_option('filter', $result);
     }
-
-    if (drush_get_option('html')) {
-      drush_print(drush_help_html_header());
-    }
-
-    // Make a fake command section to hold the global options, then print it.
-    $global_options_help = drush_global_options_command(TRUE);
-    if ((!drush_get_option('html')) && (!drush_get_option('filter'))) {
-      drush_print_help($global_options_help);
-    }
-
     // Filter out categories that the user does not want to see
-    if ($filter_category = drush_get_option('filter')) {
+    $filter_category = drush_get_option('filter');
+    if (!empty($filter_category) && ($filter_category !== TRUE)) {
       if (!array_key_exists($filter_category, $command_categories)) {
         return drush_set_error('DRUSH_NO_CATEGORY', dt("The specified command category !filter does not exist.", array('!filter' => $filter_category)));
       }
       $command_categories = array($filter_category => $command_categories[$filter_category]);
     }
 
-    // If the user specified --sort, then merge all of the remaining
-    // categories together
-    if (drush_get_option('sort', FALSE)) {
-      $combined_commands = array();
-      foreach ($command_categories as $key => $info) {
-        $combined_commands = array_merge($combined_commands, $info['commands']);
-      }
-      $command_categories = array('all' => array('commands' => $combined_commands, 'title' => dt("Commands:")));
+    if ($format == 'html') {
+      drush_print(drush_help_html_header());
     }
 
-    // Next, print out the table of commands by category.
-    $all_commands = array();
-    foreach ($command_categories as $key => $info) {
-      // Get the commands in this category and sort them
-      $commands = $info['commands'];
-      sort($commands);
-
-      // Remove hidden commands and build output for drush_print_table.
-      $rows = array();
-      foreach($commands as $cmd) {
-        $command = $implemented[$cmd];
-        $all_commands[$cmd] = $command;
-        $name = $command['aliases'] ? $cmd . ' (' . implode(', ', $command['aliases']) . ')': $cmd;
-        $rows[$cmd] = array($name, $command['description']);
-        $pipe[] = $cmd;
-      }
-
-      // Vary the output by mode: text or html
-      if (drush_get_option('html')) {
-        $sorted_commands = array();
-        foreach($commands as $cmd) {
-          $sorted_commands[$cmd] = $implemented[$cmd];
-        }
-
-        drush_print("<h3>" . $info['title'] . "</h3>");
-        drush_print(drush_help_html_command_list($sorted_commands));
-      }
-      else {
-        drush_print($info['title'] . ": (" . $key . ")");
-        drush_print_table($rows, FALSE, array(0 => 20));
-      }
+    // Make a fake command section to hold the global options, then print it.
+    $global_options_help = drush_global_options_command(TRUE);
+    if (!in_array($format, array('html', 'var_export', 'json')) && !drush_get_option('filter')) {
+      drush_print_help($global_options_help);
     }
 
-    // Print out the long-form help for all commands
-    if (drush_get_option('html')) {
-      drush_print(drush_help_html_global_options($global_options_help));
-      drush_print(drush_help_html($all_commands));
+    if ($format == 'json' || $format == 'var_export') {
+      // Print giant array, and set backend_result. We do it this way because this command
+      // isn't yet fully compliant with outputformat system. To do so, we need to deal with
+      // the fact that this command varies output significantly when showing help for one
+      // command versus a listing. We also have oddball HTML format.
+      drush_print(drush_format($command_categories, 'commands'));
+      drush_backend_set_result($command_categories);
+      return NULL;
+    }
+    else {
+      // HTML and CLI command listing (in a table).
+      drush_help_listing_print($command_categories, $format);
+
+      if ($format == 'html') {
+        // Print global options and long-form help for all commands.
+        drush_print(drush_help_html_global_options($global_options_help));
+        drush_print(drush_help_html($visible));
+      }
     }
 
     // Newline-delimited list for use by other scripts. Set the --pipe option.
-    if (drush_get_option('pipe') && isset($pipe)) {
-      sort($pipe);
-      drush_print_pipe(implode(" ", $pipe));
+    if (drush_get_option('pipe')) {
+      drush_print_pipe(implode("\n", array_keys($visible)));
     }
     return;
   }
@@ -432,6 +345,131 @@ function drush_core_help() {
   }
 
   return drush_set_error('DRUSH_COMMAND_NOT_FOUND', dt('Invalid command !command.', array('!command' => implode(" ", $commands))));
+}
+
+// Uncategorize the list of commands. Hiddens have been removed and
+// filtering performed.
+function drush_help_visible($command_categories) {
+  $all = array();
+  foreach ($command_categories as $category => $info) {
+    $all = array_merge($all,  $info['commands']);
+  }
+  return $all;
+}
+
+/**
+ * Print CLI table or HTML table listing all commands.
+ */
+function drush_help_listing_print($command_categories, $format) {
+  $all_commands = array();
+  foreach ($command_categories as $key => $info) {
+    // Get the commands in this category.
+    $commands = $info['commands'];
+
+    // Build rows for drush_print_table().
+    $rows = array();
+    foreach($commands as $cmd => $command) {
+      $name = $command['aliases'] ? $cmd . ' (' . implode(', ', $command['aliases']) . ')': $cmd;
+      $rows[$cmd] = array('name' => $name, 'description' => $command['description']);
+    }
+
+    // Vary the output by mode: CLI or HTML
+    if ($format == 'html') {
+      drush_print("<h3>" . $info['title'] . "</h3>");
+      drush_print(drush_help_html_command_list($commands));
+    }
+    else {
+      drush_print($info['title'] . ": (" . $key . ")");
+      drush_print_table($rows, FALSE, array('name' => 20));
+    }
+  }
+}
+
+/**
+ * Organize commands into categories
+ */
+function drush_help_categorize($implemented) {
+  $command_categories = array();
+  $category_map = array();
+  foreach ($implemented as $key => $candidate) {
+    if ((!array_key_exists('is_alias', $candidate) || !$candidate['is_alias']) && !$candidate['hidden']) {
+      $category = $candidate['category'];
+      // If we have decided to remap a category, remap every command
+      if (array_key_exists($category, $category_map)) {
+        $category = $category_map[$category];
+      }
+      if (!array_key_exists($category, $command_categories)) {
+        $title = drush_command_invoke_all('drush_help', "meta:$category:title");
+        $alternate_title = '';
+        if (!$title) {
+          // If there is no title, then check to see if the
+          // command file is stored in a folder with the same
+          // name as some other command file (e.g. 'core') that
+          // defines a title.
+          $alternate = basename($candidate['path']);
+          $alternate_title = drush_command_invoke_all('drush_help', "meta:$alternate:title");
+        }
+        if (!empty($alternate_title)) {
+          $category_map[$category] = $alternate;
+          $category = $alternate;
+          $title = $alternate_title;
+        }
+        $command_categories[$category]['title'] = empty($title) ? '' : $title[0];
+        $summary = drush_command_invoke_all('drush_help', "meta:$category:summary");
+        if ($summary) {
+          $command_categories[$category]['summary'] = $summary[0];
+        }
+      }
+      $candidate['category'] = $category;
+      $command_categories[$category]['commands'][$key] = $candidate;
+    }
+  }
+
+  // Make sure that 'core' is always first in the list
+  $core_category = array('core' => $command_categories['core']);
+  unset($command_categories['core']);
+
+  // Post-process the categories that have no title.
+  // Any that have fewer than 4 commands go into a section called "other".
+  $processed_categories = array();
+  $misc_categories = array();
+  $other_commands = array();
+  $other_categories = array();
+  foreach ($command_categories as $key => $info) {
+    if (empty($info['title'])) {
+      $one_category = $key;
+      if (count($info['commands']) < 4) {
+        $other_commands = array_merge($other_commands, $info['commands']);
+        $other_categories[] = $one_category;
+      }
+      else {
+        $info['title'] = dt("All commands in !category", array('!category' => $key));
+        $misc_categories[$one_category] = $info;
+      }
+    }
+    else {
+      $processed_categories[$key] = $info;
+    }
+  }
+  $other_category = array();
+  if (!empty($other_categories)) {
+    $other_category[implode(',', $other_categories)] = array('title' => dt("Other commands"), 'commands' => $other_commands);
+  }
+  asort($processed_categories);
+  asort($misc_categories);
+  $command_categories = array_merge($core_category, $processed_categories, $misc_categories, $other_category);
+
+  // If the user specified --sort, then merge all of the remaining
+  // categories together
+  if (drush_get_option('sort', FALSE)) {
+    $combined_commands = array();
+    foreach ($command_categories as $key => $info) {
+      $combined_commands = array_merge($combined_commands, $info['commands']);
+    }
+    $command_categories = array('all' => array('commands' => $combined_commands, 'title' => dt("Commands:")));
+  }
+
+  return $command_categories;
 }
 
 

@@ -1,7 +1,7 @@
 <VirtualHost *:80>
     ServerAdmin webmaster@localhost
-    ServerName project.local
-    ServerAlias local.project.com
+    ServerName foxcom
+    ServerAlias local.fox.com
     DocumentRoot /home/vagrant/www/docroot
     
     SetEnv APPLICATION_ENV development
@@ -14,25 +14,23 @@
             allow from all
     </Directory>
 
-    ErrorLog ${APACHE_LOG_DIR}/project_error.log
+    ErrorLog ${APACHE_LOG_DIR}/fox_error.log
 
     # Possible values include: debug, info, notice, warn, error, crit,
     # alert, emerg.
     LogLevel error
 
-    php_value memory_limit 9999M
-
-    CustomLog ${APACHE_LOG_DIR}/project_access.log combined
+    CustomLog ${APACHE_LOG_DIR}/fox_access.log combined
 
 </VirtualHost>
 
 <VirtualHost *:443>
     DocumentRoot "/home/vagrant/www/docroot"
-    ServerName project:443
+    ServerName fox:443
     ServerAdmin webmaster@localhost
     EnableSendfile Off
-    ErrorLog "${APACHE_LOG_DIR}/project_ssl_error.log"
-    TransferLog "${APACHE_LOG_DIR}/project_ssl_transfer_access.log"
+    ErrorLog "${APACHE_LOG_DIR}/fox_ssl_error.log"
+    TransferLog "${APACHE_LOG_DIR}/fox_ssl_transfer_access.log"
 
     SSLEngine on
     SSLCipherSuite ALL:!ADH:!EXPORT56:RC4+RSA:+HIGH:+MEDIUM:+LOW:+SSLv2:+EXP:+eNULL

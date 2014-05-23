@@ -3,7 +3,7 @@ class base-lamp::drush{
             path => '/usr/local/share/drush',
             ensure => present,
             recurse => true,
-            source => "puppet:///modules/blitz-lamp/drush";
+            source => "puppet:///modules/base-lamp/drush";
 
     }
 

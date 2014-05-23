@@ -102,14 +102,17 @@ function _drush_config_file($context, $prefix = NULL, $version = '') {
   if ($config_list = (array)drush_get_context('DRUSH_CONFIG')) {
     foreach ($config_list as $config) {
       if (is_dir($config)) {
-        $config = $config . '/drushrc.php';
+        $config = $config . '/' . $config_file;
       }
       $configs['custom'][] = $config;
     }
   }
 
   if ($drupal_root = drush_get_context('DRUSH_SELECTED_DRUPAL_ROOT')) {
-    $configs['drupal'] = $drupal_root . '/sites/all/drush/' . $config_file;
+    $configs['drupal'] = array(
+      $drupal_root . '/sites/all/drush/' . $config_file,
+      $drupal_root . '/drush/' . $config_file,
+    );
 
     if ($site_path = $drupal_root . '/' . drush_get_context('DRUSH_SELECTED_DRUPAL_SITE_CONF_PATH')) {
       $configs['site'] = $site_path . "/" . $config_file;
@@ -117,8 +120,9 @@ function _drush_config_file($context, $prefix = NULL, $version = '') {
   }
 
   // in the user home directory
-  if (!is_null(drush_server_home())) {
-    $configs['user'] = drush_server_home() . '/.' . $config_file;
+  $server_home = drush_server_home();
+  if (isset($server_home)) {
+    $configs['user'] = $server_home . '/.' . $config_file;
   }
 
   // in $HOME/.drush directory
@@ -323,9 +327,9 @@ function drush_set_context($context, $value) {
  */
 function &drush_get_context($context = NULL, $default = NULL) {
   static $cache = array();
-  if (!is_null($context)) {
+  if (isset($context)) {
     if (!isset($cache[$context])) {
-      $default = is_null($default) ? array() : $default;
+      $default = !isset($default) ? array() : $default;
       $cache[$context] = $default;
     }
     return $cache[$context];
@@ -350,12 +354,14 @@ function drush_set_arguments($arguments) {
 }
 
 /**
- * Get the arguments passed to the drush.php script.
+ * Gets the command line arguments passed to Drush.
  *
- * When drush_set_arguments is initially called by drush_parse_args,
- * the entire list of arguments will be populated.
- * Once the command has been dispatched, this will be return only the remaining
- * arguments to the command.
+ * @return array
+ *   An indexed array of arguments. Until Drush has dispatched the command, the
+ *   array will include the command name as the first element. After that point
+ *   the array will not include the command name.
+ *
+ * @see drush_set_arguments()
  */
 function drush_get_arguments() {
   return drush_get_context('arguments');
@@ -442,7 +448,7 @@ function drush_get_option_list($option, $default = array(), $context = NULL) {
   $result = drush_get_option($option, $default, $context);
 
   if (!is_array($result)) {
-    $result = explode(',', $result);
+    $result = array_map('trim', array_filter(explode(',', $result)));
   }
 
   return $result;

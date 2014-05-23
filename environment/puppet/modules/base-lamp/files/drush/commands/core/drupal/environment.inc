@@ -1,11 +1,13 @@
 <?php
 /**
  * @file
- *   Specific functions for a drupal 7 environment.
+ *   Specific functions for a drupal 8+ environment.
  *   drush_include_engine() magically includes either this file
- *   or environment_X.inc depending on which version of drupal drush
+ *   or environment_X.inc depending on which version of drupal Drush
  *   is called from.
  */
+
+use Drupal\Core\Site\Settings;
 
 /**
  * Get complete information for all available modules.
@@ -17,11 +19,13 @@
  */
 function drush_get_modules($include_hidden = TRUE) {
   $modules = system_rebuild_module_data();
-  if (!$include_hidden) {
-    foreach ($modules as $key => $module) {
-      if (isset($module->info['hidden'])) {
-        unset($modules[$key]);
-      }
+
+  foreach ($modules as $key => $module) {
+    if ((!$include_hidden) && (isset($module->info['hidden']))) {
+      unset($modules[$key]);
+    }
+    else {
+      $module->schema_version = drupal_get_installed_schema_version($key);
     }
   }
 
@@ -66,9 +70,9 @@ function drush_check_module_dependencies($modules, $module_info) {
       // check for version incompatibility
       foreach ($dependencies as $dependency_name => $v) {
         $current_version = $module_info[$dependency_name]->info['version'];
-        $current_version = str_replace(DRUPAL_CORE_COMPATIBILITY . '-', '', $current_version);
+        $current_version = str_replace(drush_get_drupal_core_compatibility() . '-', '', $current_version);
         $incompatibility = drupal_check_incompatibility($v, $current_version);
-        if (!is_null($incompatibility)) {
+        if (isset($incompatibility)) {
           $status[$key]['error'] = array(
             'code' => 'DRUSH_PM_ENABLE_DEPENDENCY_VERSION_MISMATCH',
             'message' => dt('Module !module cannot be enabled because it depends on !dependency !required_version but !current_version is available', array('!module' => $module, '!dependency' => $dependency_name, '!required_version' => $incompatibility, '!current_version' => $current_version))
@@ -96,10 +100,41 @@ function drush_check_module_dependencies($modules, $module_info) {
 function drush_module_dependents($modules, $module_info) {
   $dependents = array();
   foreach ($modules as $module) {
-    $dependents = array_merge($dependents, drupal_map_assoc(array_keys($module_info[$module]->required_by)));
+    $keys = array_keys($module_info[$module]->required_by);
+    $dependents = array_merge($dependents, array_combine($keys, $keys));
   }
 
   return array_unique($dependents);
+}
+
+/**
+ * Returns a list of enabled modules.
+ *
+ * This is a wrapper for module_list().
+ */
+function drush_module_list() {
+  return module_list('module_enabled');
+}
+
+/**
+ * Return a list of modules from a list of named modules.
+ * Both enabled and disabled/uninstalled modules are returned.
+ */
+function drush_get_named_extensions_list($extensions) {
+  $result = array();
+  $modules = drush_get_modules();
+  foreach($modules as $name => $module) {
+    if (in_array($name, $extensions)) {
+      $result[$name] = $module;
+    }
+  }
+  $themes = drush_get_themes();
+  foreach($themes as $name => $theme) {
+    if (in_array($name, $extensions)) {
+      $result[$name] = $theme;
+    }
+  }
+  return $result;
 }
 
 /**
@@ -112,7 +147,7 @@ function drush_module_enable($modules) {
   // The list of modules already have all the dependencies, but they might not
   // be in the correct order. Still pass $enable_dependencies = TRUE so that
   // Drupal will enable the modules in the correct order.
-  module_enable($modules);
+  module_install($modules);
   // Flush all caches.
   drupal_flush_all_caches();
 }
@@ -124,12 +159,7 @@ function drush_module_enable($modules) {
  *   Array of module names
  */
 function drush_module_disable($modules) {
-  // The list of modules already have all the dependencies, but they might not
-  // be in the correct order. Still pass $enable_dependencies = TRUE so that
-  // Drupal will enable the modules in the correct order.
-  module_disable($modules);
-  // Flush all caches.
-  drupal_flush_all_caches();
+  drush_set_error('DRUSH_MODULE_DISABLE', dt('Drupal 8 does not support disabling modules.'));
 }
 
 /**
@@ -139,8 +169,7 @@ function drush_module_disable($modules) {
  *   Array of module names
  */
 function drush_module_uninstall($modules) {
-  require_once DRUSH_DRUPAL_CORE . '/includes/install.inc';
-  drupal_uninstall_modules($modules);
+  module_uninstall($modules);
 }
 
 /**
@@ -153,8 +182,8 @@ function drush_module_uninstall($modules) {
  */
 function drush_get_themes($include_hidden = TRUE) {
   $themes = system_rebuild_theme_data();
-  if (!$include_hidden) {
-    foreach ($themes as $key => $theme) {
+  foreach ($themes as $key => $theme) {
+    if (!$include_hidden) {
       if (isset($theme->info['hidden'])) {
         unset($themes[$key]);
       }
@@ -194,7 +223,7 @@ function drush_theme_disable($themes) {
  * @return
  *   Array of watchdog severity levels.
  */
-function core_watchdog_severity_levels() {
+function drush_watchdog_severity_levels() {
   return array(
     WATCHDOG_EMERGENCY=> 'emergency',
     WATCHDOG_ALERT    => 'alert',
@@ -206,3 +235,86 @@ function core_watchdog_severity_levels() {
     WATCHDOG_DEBUG    => 'debug',
   );
 }
+
+/**
+ * Helper function to obtain the message types based on drupal version.
+ *
+ * @return
+ *   Array of watchdog message types.
+ */
+function drush_watchdog_message_types() {
+  return _dblog_get_message_types();
+}
+
+/**
+ * Returns a queue object.
+ */
+function drush_queue_get($name) {
+  return \Drupal::queue($name);
+}
+
+/**
+ * Returns all defined queues.
+ */
+function drush_queue_get_queues() {
+  static $queues;
+  if (!isset($queues)) {
+    $queues = \Drupal::moduleHandler()->invokeAll('queue_info');
+    drupal_alter('queue_info', $queues);
+  }
+  return $queues;
+}
+
+function _drush_theme_default() {
+  return \Drupal::config('system.theme')->get('default');
+}
+
+function _drush_theme_admin() {
+  $theme = \Drupal::config('system.theme')->get('admin');
+  return empty($theme) ? 'seven' : $theme;
+}
+
+function _drush_file_public_path() {
+  return Settings::get('file_public_path', conf_path() . '/files');
+}
+
+function _drush_file_private_path() {
+  return \Drupal::config('system.file')->get('path.private');
+}
+
+/**
+ * Gets the extension name.
+ *
+ * @param $info
+ *   The extension info.
+ * @return string
+ *   The extension name.
+ */
+function _drush_extension_get_name($info) {
+  return $info->getName();
+}
+
+/**
+ * Gets the extension type.
+ *
+ * @param $info
+ *   The extension info.
+ * @return string
+ *   The extension type.
+ */
+function _drush_extension_get_type($info) {
+  return $info->getType();
+}
+
+/**
+ * Gets the extension path.
+ *
+ * @param $info
+ *   The extension info.
+ * @return string
+ *   The extension path.
+ */
+function _drush_extension_get_path($info) {
+  return $info->getPath();
+}
+

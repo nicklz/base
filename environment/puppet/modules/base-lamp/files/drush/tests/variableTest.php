@@ -1,12 +1,17 @@
 <?php
 
-/*
- * @file
- *   Tests for enable, disable, uninstall, pm-list commands.
+namespace Unish;
+
+/**
+ * @group commands
  */
-class VariableCase extends Drush_CommandTestCase {
+class VariableCase extends CommandUnishTestCase {
 
   function testVariable() {
+    if (UNISH_DRUPAL_MAJOR_VERSION >= 8) {
+      $this->markTestSkipped("Variable system was removed in Drupal 8.");
+    }
+
     $sites = $this->setUpDrupal(1, TRUE);
     $options = array(
       'yes' => NULL,
@@ -14,6 +19,12 @@ class VariableCase extends Drush_CommandTestCase {
       'root' => $this->webroot(),
       'uri' => key($sites),
     );
+
+    $this->drush('variable-set', array('test_integer', '3.14159'), $options);
+    $this->drush('variable-get', array('test_integer'), $options);
+    $var_export = $this->getOutput();
+    eval($var_export);
+    $this->assertEquals("3.14159", $variables['test_integer'], 'Integer variable was successfully set and get.');
 
     $this->drush('variable-set', array('date_default_timezone', 'US/Mountain'), $options);
     $this->drush('variable-get', array('date_default_timezone'), $options); // Wildcard get.

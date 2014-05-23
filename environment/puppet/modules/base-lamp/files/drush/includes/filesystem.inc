@@ -101,18 +101,32 @@ function drush_dir_md5($dir) {
 }
 
 /**
- * Deletes the provided file or folder and everything inside it.
+ * Deletes the specified file or directory and everything inside it.
+ *
  * Usually respects read-only files and folders. To do a forced delete use
  * drush_delete_tmp_dir() or set the parameter $forced.
  *
- * @param $dir
- *   The directory to delete
- * @param $force
- *   Try whatever possible to delete the directory - also read-only ones.
- * @return
- *   FALSE on failure, TRUE if everything was deleted
+ * @param string $dir
+ *   The file or directory to delete.
+ * @param bool $force
+ *   Whether or not to try everything possible to delete the directory, even if
+ *   it's read-only. Defaults to FALSE.
+ * @param bool $follow_symlinks
+ *   Whether or not to delete symlinked files. Defaults to FALSE--simply
+ *   unlinking symbolic links.
+ *
+ * @return bool
+ *   FALSE on failure, TRUE if everything was deleted.
  */
-function drush_delete_dir($dir, $force = FALSE) {
+function drush_delete_dir($dir, $force = FALSE, $follow_symlinks = FALSE) {
+  // Do not delete symlinked files, only unlink symbolic links
+  if (is_link($dir) && !$follow_symlinks) {
+    return unlink($dir);
+  }
+  // Allow to delete symlinks even if the target doesn't exist.
+  if (!is_link($dir) && !file_exists($dir)) {
+    return TRUE;
+  }
   if (!is_dir($dir)) {
     if ($force) {
       // Force deletion of items with readonly flag.
@@ -120,7 +134,35 @@ function drush_delete_dir($dir, $force = FALSE) {
     }
     return unlink($dir);
   }
-  foreach (scandir($dir) as $item) {
+  if (drush_delete_dir_contents($dir, $force) === FALSE) {
+    return FALSE;
+  }
+  if ($force) {
+    // Force deletion of items with readonly flag.
+    @chmod($dir, 0777);
+  }
+  return rmdir($dir);
+}
+
+/**
+ * Deletes the contents of a directory.
+ *
+ * @param string $dir
+ *   The directory to delete.
+ * @param bool $force
+ *   Whether or not to try everything possible to delete the contents, even if
+ *   they're read-only. Defaults to FALSE.
+ *
+ * @return bool
+ *   FALSE on failure, TRUE if everything was deleted.
+ */
+function drush_delete_dir_contents($dir, $force = FALSE) {
+  $scandir = @scandir($dir);
+  if (!is_array($scandir)) {
+    return FALSE;
+  }
+
+  foreach ($scandir as $item) {
     if ($item == '.' || $item == '..') {
       continue;
     }
@@ -131,11 +173,7 @@ function drush_delete_dir($dir, $force = FALSE) {
       return FALSE;
     }
   }
-  if ($force) {
-    // Force deletion of items with readonly flag.
-    @chmod($dir, 0777);
-  }
-  return rmdir($dir);
+  return TRUE;
 }
 
 /**
@@ -221,7 +259,7 @@ function _drush_recursive_copy($src, $dest) {
   elseif (is_link($src)) {
     symlink(readlink($src), $dest);
   }
-  elseif (copy($src, $dest) !== TRUE) {
+  elseif (!(copy($src, $dest) && touch($dest, filemtime($src)))) {
     return FALSE;
   }
 
@@ -382,18 +420,18 @@ function drush_find_tmp() {
   if (!isset($temporary_directory)) {
     $directories = array();
 
+    // Get user specific and operating system temp folders from system environment variables.
+    // See http://www.microsoft.com/resources/documentation/windows/xp/all/proddocs/en-us/ntcmds_shelloverview.mspx?mfr=true
+    $tempdir = getenv('TEMP');
+    if (!empty($tempdir)) {
+      $directories[] = $tempdir;
+    }
+    $tmpdir = getenv('TMP');
+    if (!empty($tmpdir)) {
+      $directories[] = $tmpdir;
+    }
     // Operating system specific dirs.
     if (drush_is_windows()) {
-      // get user specific and operating system temp folders from system environment variables
-      // see http://www.microsoft.com/resources/documentation/windows/xp/all/proddocs/en-us/ntcmds_shelloverview.mspx?mfr=true
-      $tempdir = getenv('TEMP');
-      if (isset($tempdir)) {
-        $directories[] = $tempdir;
-      }
-      $tmpdir = getenv('TMP');
-      if (isset($tmpdir)) {
-        $directories[] = $tmpdir;
-      }
       $windir = getenv('WINDIR');
       if (isset($windir)) {
         // WINDIR itself is not writable, but it always contains a /Temp dir,
@@ -405,11 +443,7 @@ function drush_find_tmp() {
     else {
       $directories[] = '/tmp';
     }
-    // This function exists in PHP 5 >= 5.2.1, but drush
-    // requires PHP 5 >= 5.2.0, so we check for it.
-    if (function_exists('sys_get_temp_dir')) {
-      $directories[] = sys_get_temp_dir();
-    }
+    $directories[] = sys_get_temp_dir();
 
     foreach ($directories as $directory) {
       if (is_dir($directory) && is_writable($directory)) {
@@ -422,7 +456,7 @@ function drush_find_tmp() {
       // If no directory has been found, create one in cwd.
       $temporary_directory = drush_cwd() . '/tmp';
       drush_mkdir($temporary_directory, TRUE);
-      if (!is_dir($directory)) {
+      if (!is_dir($temporary_directory)) {
         return drush_set_error('DRUSH_UNABLE_TO_CREATE_TMP_DIR', dt("Unable to create a temporary directory."));
       }
       drush_register_file_for_deletion($temporary_directory);
@@ -449,8 +483,9 @@ function drush_tempnam($pattern, $tmp_dir = NULL, $suffix = '') {
   }
   $tmp_file = tempnam($tmp_dir, $pattern);
   drush_register_file_for_deletion($tmp_file);
-
-  return $tmp_file . $suffix;
+  $tmp_file_with_suffix = $tmp_file . $suffix;
+  drush_register_file_for_deletion($tmp_file_with_suffix);
+  return $tmp_file_with_suffix;
 }
 
 /**
@@ -520,8 +555,9 @@ function drush_preflight_backup_dir($subdir = NULL) {
     // Try to use db name as subdir if none was provided.
     if (empty($subdir)) {
       $subdir = 'unknown';
-      if ($creds = drush_get_context('DRUSH_DB_CREDENTIALS')) {
-        $subdir = $creds['name'];
+      if ($sql = drush_sql_get_class()) {
+        $db_spec = $sql->db_spec();
+        $subdir = $db_spec['database'];
       }
     }
 

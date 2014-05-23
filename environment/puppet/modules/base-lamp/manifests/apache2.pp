@@ -3,11 +3,17 @@ class base-lamp::apache2{
         ensure => installed
     }
 
-    service{ "apache2":
-        ensure     => running,
-        enable     => true,
-        hasrestart => true,
-        require    => Package['apache2']
+    file { '/var/lock/apache2':
+      ensure => directory,
+      owner => 'vagrant',
+      require => Package['apache2'],
+    }
+  
+    service { 'apache2':
+      ensure => running,
+      enable => true,
+      hasrestart => true,
+      require => File['/var/lock/apache2'],
     }
 
     file{'project.crt':
@@ -41,4 +47,6 @@ class base-lamp::apache2{
             notify  => Service['apache2'],
             mode => 0644;
     }
+    
+
 }

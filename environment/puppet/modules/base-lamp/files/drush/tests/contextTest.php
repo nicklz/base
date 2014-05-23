@@ -1,18 +1,22 @@
 <?php
 
-/*
+/**
 * @file
 *  Assure that context API behaves as designed. Mostly implicitly tested, but we
 *  do have some edges that need explicit testing.
 *
 *  @see drush/includes/context.inc.
+*
+*  @group base
 */
 
-class contextCase extends Drush_CommandTestCase {
+namespace Unish;
+
+class contextCase extends CommandUnishTestCase {
 
   function setUpPaths() {
     $this->log("webroot: ".$this->webroot()."\n");
-    $this->env = key($this->sites);
+    $this->env = key($this->getSites());
     $this->site = $this->webroot() . '/sites/' . $this->env;
     $this->home = UNISH_SANDBOX . '/home';
     $this->paths = array(
@@ -37,7 +41,9 @@ class contextCase extends Drush_CommandTestCase {
   function setUp() {
     parent::setUp();
 
-    $this->setUpDrupal();
+    if (!$this->getSites()) {
+      $this->setUpDrupal();
+    }
     $this->setUpPaths();
 
     // These files are only written to sandbox so get automatically cleaned up.
@@ -45,10 +51,8 @@ class contextCase extends Drush_CommandTestCase {
       $contents = <<<EOD
 <?php
 // Written by Drush's contextCase::setUp(). This file is safe to delete.
-
 \$options['contextConfig'] = '$key';
 \$command_specific['unit-eval']['contextConfig'] = '$key-specific';
-
 EOD;
       $path .= $key == 'user' ? '/.drushrc.php' : '/drushrc.php';
       if (file_put_contents($path, $contents)) {
@@ -57,7 +61,7 @@ EOD;
     }
 
     // Also write a site alias so we can test its supremacy in context hierarchy.
-    $path = $this->site . '/aliases.drushrc.php';
+    $path = $this->webroot() . '/sites/' . $this->env . '/aliases.drushrc.php';
     $aliases['contextAlias'] = array(
       'contextConfig' => 'alias1',
       'command-specific' => array (
@@ -66,33 +70,22 @@ EOD;
         ),
       ),
     );
-    $contents = $this->file_aliases($aliases);
+    $contents = $this->unish_file_aliases($aliases);
     $return = file_put_contents($path, $contents);
-  }
-
-  /**
-   * These should be different tests but I could not work out how to do that
-   * without calling setUp() twice. setUpBeforeClass() did not work out (for MW).
-   */
-  function testContext() {
-    $this->ConfigSearchPaths();
-    $this->ConfigVersionSpecific();
-    $this->ContextHierarchy();
   }
 
   /**
    * Assure that all possible config files get loaded.
    */
-  function ConfigSearchPaths() {
+  function testConfigSearchPaths() {
     $options = array(
       'pipe' => NULL,
       'config' => UNISH_SANDBOX,
       'root' => $this->webroot(),
-      'uri' => $this->env
+      'uri' => key($this->getSites())
     );
     $this->drush('core-status', array('Drush configuration'), $options);
-    $output = trim($this->getOutput());
-    $loaded = explode(' ', $output);
+    $loaded = $this->getOutputFromJSON('drush-conf');
     $loaded = array_map(array(&$this, 'convert_path'), $loaded);
     $this->assertSame($this->written, $loaded);
   }
@@ -100,7 +93,7 @@ EOD;
   /**
    * Assure that matching version-specific config files are loaded and others are ignored.
    */
-  function ConfigVersionSpecific() {
+  function testConfigVersionSpecific() {
     $major = $this->drush_major_version();
     // Arbitrarily choose the system search path.
     $path = realpath(UNISH_SANDBOX . '/etc/drush');
@@ -122,8 +115,7 @@ EOD;
     }
 
     $this->drush('core-status', array('Drush configuration'), array('pipe' => NULL));
-    $output = trim($this->getOutput());
-    $loaded = explode(' ', $output);
+    $loaded = $this->getOutputFromJSON('drush-conf');
     // Next 2 lines needed for Windows compatibility.
     $loaded = array_map(array(&$this, 'convert_path'), $loaded);
     $files = array_map(array(&$this, 'convert_path'), $files);
@@ -137,7 +129,7 @@ EOD;
    *
    * Stdin context not exercised here. See backendCase::testTarget().
    */
-  function ContextHierarchy() {
+  function testContextHierarchy() {
     // The 'custom' config file has higher priority than cli and regular config files.
     $eval =  '$contextConfig = drush_get_option("contextConfig", "n/a");';
     $eval .= '$cli1 = drush_get_option("cli1");';
@@ -147,7 +139,7 @@ EOD;
       'cli1' => NULL,
       'config' => $config,
       'root' => $this->webroot(),
-      'uri' => $this->env,
+      'uri' => key($this->getSites()),
     );
     $this->drush('php-eval', array($eval), $options);
     $output = $this->getOutput();
@@ -161,7 +153,7 @@ EOD;
     $options = array(
       'config' => $config,
       'root' => $this->webroot(),
-      'uri' => $this->env,
+      'uri' => key($this->getSites()),
     );
     $this->drush('php-eval', array($eval), $options, '@contextAlias');
     $output = $this->getOutput();
@@ -175,7 +167,7 @@ EOD;
     $eval .= 'print json_encode(get_defined_vars());';
     $options = array(
       'root' => $this->webroot(),
-      'uri' => $this->env,
+      'uri' => key($this->getSites()),
       'include' => dirname(__FILE__), // Find unit.drush.inc commandfile.
     );
     $this->drush('unit-eval', array($eval), $options);

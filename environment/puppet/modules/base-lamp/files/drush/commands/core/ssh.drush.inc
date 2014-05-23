@@ -10,15 +10,17 @@ function ssh_drush_command() {
   $items['site-ssh'] = array(
     'description' => 'Connect to a Drupal site\'s server via SSH for an interactive session or to run a shell command',
     'arguments' => array(
-      'site-alias' => 'A remote site alias. Can be an alias list.',
       'bash' => 'Bash to execute on target. Optional, except when site-alias is a list.',
     ),
-    'options' => drush_shell_exec_proc_build_options(),
+    'options' => array(
+      'cd' => "Directory to change to. Use a full path, TRUE for the site's Drupal root directory, or FALSE for the remote user's home directory. Defaults to the Drupal root.",
+    ) + drush_shell_exec_proc_build_options(),
     'handle-remote-commands' => TRUE,
     'strict-option-handling' => TRUE,
     'examples' => array(
       'drush @mysite ssh' => 'Open an interactive shell on @mysite\'s server.',
       'drush @prod ssh \'ls /tmp\'' => 'Run "ls /tmp" on @prod site. If @prod is a site list, then ls will be executed on each site.',
+      'drush @prod git pull' => 'Run "git pull" on the Drupal root directory on the @prod site.',
     ),
     'aliases' => array('ssh'),
     'bootstrap' => DRUSH_BOOTSTRAP_DRUSH,
@@ -37,7 +39,7 @@ function drush_ssh_site_ssh($command = NULL) {
   // to work in addition to the preferred form of `drush ssh ls /path`.
   // Supporting the legacy form means that we cannot give the full path to an
   // executable if it contains spaces.
-  for ($x = 1; $x < sizeof($args); $x++) {
+  for ($x = 1; $x < count($args); $x++) {
     $args[$x] = drush_escapeshellarg($args[$x]);
   }
   $command = implode(' ', $args);
@@ -65,7 +67,13 @@ function drush_ssh_site_ssh($command = NULL) {
     return;
   }
 
-  $cmd = drush_shell_proc_build($site, $command);
+  $interactive = FALSE;
+  $cd = drush_get_option('cd', TRUE);
+  if (empty($command)) {
+    $command = 'bash -l';
+    $interactive = TRUE;
+  }
+  $cmd = drush_shell_proc_build($site, $command, $cd, $interactive);
   $status = drush_shell_proc_open($cmd);
   if ($status != 0) {
     return drush_set_error('DRUSH_SITE_SSH_ERROR', dt('An error @code occurred while running the command `@command`', array('@command' => $cmd, '@code' => $status)));

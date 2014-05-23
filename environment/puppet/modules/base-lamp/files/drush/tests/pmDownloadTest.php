@@ -1,9 +1,11 @@
 <?php
 
+namespace Unish;
+
 /**
-  * pm-download testing
+  * @group pm
   */
-class pmDownloadCase extends Drush_CommandTestCase {
+class pmDownloadCase extends CommandUnishTestCase {
   public function testPmDownload() {
     $this->drush('pm-download', array('devel'), array('cache' => NULL, 'skip' => NULL)); // No FirePHP
     $this->assertFileExists(UNISH_SANDBOX . '/devel/README.txt');
@@ -20,23 +22,23 @@ class pmDownloadCase extends Drush_CommandTestCase {
     $devel_options = array(
       'cache' => NULL,
       'skip' => NULL, // No FirePHP
-      'invoke' => NULL, // Invoke from script: do not verify options
+      'strict' => 0, // Invoke from script: do not verify options
     );
 
-    // Default to sites/all.
+    // Default to Drupal sitewide directory.
     $options = array(
       'root' => $root,
       'uri' => $uri,
     ) + $devel_options;
     $this->drush('pm-download', array('devel'), $options);
-    $this->assertFileExists($root . '/sites/all/modules/devel/README.txt');
+    $this->assertFileExists($root . '/' . $this->drupalSitewideDirectory() . '/modules/devel/README.txt');
 
     //  --use-site-dir
     // Expand above $options.
     $options += array('use-site-dir' => NULL);
     $this->drush('pm-download', array('devel'), $options);
     $this->assertFileExists("$root/sites/$uri/modules/devel/README.txt");
-    unish_file_delete_recursive("$root/sites/$uri/modules/devel");
+    unish_file_delete_recursive("{$root}/sites/{$uri}/modules/devel", TRUE);
 
     // If we are in site specific dir, then download belongs there.
     $path_stage = "$root/sites/$uri";

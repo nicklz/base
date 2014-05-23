@@ -16,6 +16,7 @@
 function variable_drush_command() {
   $items['variable-get'] = array(
     'description' => 'Get a list of some or all site variables and values.',
+    'core' => array(6,7),
     'arguments' => array(
       'name' => 'A string to filter the variables by. Variables whose name contains the string will be listed.',
     ),
@@ -25,17 +26,21 @@ function variable_drush_command() {
       'drush vget site_mail --exact' => 'Show the variable with the exact key "site_mail".',
     ),
     'options' => array(
-      'format' => array(
-        'description' => 'Format to output the object. Use "print_r" for print_r (default), "export" for var_export, and "json" for JSON.',
-        'example-value' => 'export',
-      ),
-      'pipe' => 'A synonym for --format=export. Useful for pasting into code.',
       'exact' => 'Only get the one variable that exactly matches the specified name.',
+    ),
+    'outputformat' => array(
+      'default' => 'labeled-export',
+      'pipe-format' => 'config',
+      'variable-name' => 'variables',
+      'table-metadata' => array(
+        'format' => 'var_export',
+      ),
     ),
     'aliases' => array('vget'),
   );
   $items['variable-set'] = array(
     'description' => "Set a variable.",
+    'core' => array(6,7),
     'arguments' => array(
       'name' => 'The name of a variable or the first few letters of its name.',
       'value' => 'The value to assign to the variable. Use \'-\' to read the object from STDIN.',
@@ -59,6 +64,7 @@ function variable_drush_command() {
     'aliases' => array('vset'),
   );
   $items['variable-delete'] = array(
+    'core' => array(6,7),
     'description' => "Delete a variable.",
     'arguments' => array(
       'name' => 'The name of a variable or the first few letters of its name.',
@@ -119,7 +125,6 @@ function variable_complete_variables() {
  */
 function drush_variable_get() {
   global $conf;
-  $output = NULL;
 
   $keys = array_keys($conf);
   if ($args = func_get_args()) {
@@ -133,11 +138,8 @@ function drush_variable_get() {
   $pipe = array();
   foreach ($keys as $name) {
     $value = $conf[$name];
-    $pipe[] = drush_format($value, $name, 'export');
-    drush_print(drush_format($value, $name));
     $returns[$name] = $value;
   }
-  drush_print_pipe($pipe);
 
   if (empty($keys)) {
     return drush_set_error('No matching variable found.');
@@ -218,7 +220,7 @@ function drush_variable_set() {
 
 function _drush_variable_format($value, $format) {
   if ($format == 'auto') {
-    if (is_numeric($value)) {
+    if (is_int($value)) {
       $format = 'integer';
     }
     elseif (($value == 'TRUE') || ($value == 'FALSE')) {
