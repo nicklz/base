@@ -1,7 +1,7 @@
 <VirtualHost *:80>
     ServerAdmin webmaster@localhost
-    ServerName foxcom
-    ServerAlias local.fox.com
+    ServerName projectcom
+    ServerAlias local.project.com
     DocumentRoot /home/vagrant/www/docroot
     
     SetEnv APPLICATION_ENV development

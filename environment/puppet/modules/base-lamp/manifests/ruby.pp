@@ -12,11 +12,11 @@ class base-lamp::ruby {
         ensure => installed,
         require => Package['rubygems'],
     }
-    package{ 'listen':
-        provider => "gem",
-        ensure => installed,
-        require => Package['rubygems'],
-    }
+#    package{ 'listen':
+#        provider => "gem",
+#        ensure => installed,
+#        require => Package['rubygems'],
+#    }
     package{ 'rb-inotify':
         provider => "gem",
         ensure => installed,
@@ -27,14 +27,15 @@ class base-lamp::ruby {
         ensure => installed,
         require => Package['rubygems'],
     }
-    package{ 'capistrano-ext':
-        provider => "gem",
-        ensure => installed,
-        require => Package['rubygems'],
-    } 
-    package{ 'railsless-deploy':
-        provider => "gem",
-        ensure => installed,
-        require => Package['rubygems'],
-    }
+    
+#    package{ 'capistrano-ext':
+#        provider => "gem",
+#        ensure => installed,
+#	      require => Package['rubygems'],
+#    } 
+#    package{ 'railsless-deploy':
+#        provider => "gem",
+#        ensure => installed,
+#        require => Package['rubygems'],
+#    }
 }

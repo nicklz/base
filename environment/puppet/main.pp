@@ -19,6 +19,6 @@ node default{
     include base-lamp::drush
     include base-lamp::memcached
     include base-lamp::sshpass
-    include base-lamp::phpmyadmin
+#    include base-lamp::phpmyadmin
     include base-lamp::configuration-vagrant
 }

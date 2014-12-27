@@ -19,7 +19,7 @@
     "https_host": 8443,
     "https_guest": 443,
     "http_guest_apache": 1000,
-    "http_host_apache": 10000
+    "http_host_apache": 10001
   },
   "memory": 2048,
   // Set to false if your system doesn't support NFS
